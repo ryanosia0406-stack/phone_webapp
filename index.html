@@ -3,68 +3,153 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GPS Tracker</title>
+    <title>Drone Command Center</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1a1a2e;
+            color: #ffffff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .container {
+            background-color: #16213e;
+            padding: 2rem;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            text-align: center;
+            width: 90%;
+            max-width: 400px;
+        }
+        h1 { margin-bottom: 1.5rem; color: #4ecca3; }
+        
+        .status-box {
+            background: #0f3460;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            border-left: 5px solid #4ecca3;
+        }
+        .mode-text { font-weight: bold; color: #4ecca3; }
+        
+        button {
+            width: 100%;
+            padding: 12px;
+            margin: 8px 0;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.1s, opacity 0.2s;
+        }
+        button:active { transform: scale(0.98); }
+
+        .btn-summon { background-color: #4ecca3; color: #1a1a2e; }
+        .btn-follow { background-color: #3498db; color: white; }
+        .btn-stop { background-color: #e74c3c; color: white; }
+        
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        #coords { font-size: 12px; color: #95a5a6; margin-top: 10px; }
+    </style>
 </head>
 <body>
 
-    <h2>GPS to Ngrok Server</h2>
-    <button onclick="getLocation()">Send My Location</button>
-    <p id="status"></p>
+    <div class="container">
+        <h1>Drone Control</h1>
+        
+        <div class="status-box">
+            <div>Current Mode: <span id="current-mode" class="mode-text">IDLE</span></div>
+            <div id="coords">Lat: -- | Lon: --</div>
+        </div>
+
+        <button class="btn-summon" onclick="summonDrone()">1. Summon Drone</button>
+        <button class="btn-follow" id="follow-btn" onclick="startFollowMe()">2. Follow-Me Mode</button>
+        <button class="btn-stop" id="stop-btn" onclick="stopFollowMe()" disabled>3. Stop Follow-Me</button>
+
+        <p id="network-status" style="font-size: 12px; margin-top: 15px;"></p>
+    </div>
 
     <script>
-        const statusText = document.getElementById('status');
         const NGROK_URL = "https://mothiest-aecial-hollie.ngrok-free.dev/location";
+        const modeDisplay = document.getElementById('current-mode');
+        const coordDisplay = document.getElementById('coords');
+        const networkStatus = document.getElementById('network-status');
+        const followBtn = document.getElementById('follow-btn');
+        const stopBtn = document.getElementById('stop-btn');
 
-        function getLocation() {
-            if (navigator.geolocation) {
-                statusText.innerText = "Locating...";
-                navigator.geolocation.getCurrentPosition(sendPosition, handleError);
-            } else {
-                statusText.innerText = "Geolocation is not supported by this browser.";
+        let followInterval = null;
+
+        // Core function to grab GPS and send to Python
+        function sendGpsData(modeName) {
+            if (!navigator.geolocation) {
+                networkStatus.innerText = "Geolocation not supported";
+                return;
             }
-        }
 
-        function sendPosition(position) {
-            const data = {
-                latitude: position.coords.latitude,
-                longitude: position.coords.longitude
-            };
+            navigator.geolocation.getCurrentPosition((position) => {
+                const data = {
+                    latitude: position.coords.latitude,
+                    longitude: position.coords.longitude,
+                    mode: modeName
+                };
 
-            statusText.innerText = `Sending: ${data.latitude}, ${data.longitude}`;
+                coordDisplay.innerText = `Lat: ${data.latitude.toFixed(5)} | Lon: ${data.longitude.toFixed(5)}`;
 
-            fetch(NGROK_URL, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(data)
-            })
-            .then(response => response.json())
-            .then(result => {
-                console.log('Success:', result);
-                statusText.innerText = "Location sent successfully!";
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                statusText.innerText = "Error sending location. Check console.";
+                fetch(NGROK_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                })
+                .then(res => res.json())
+                .then(() => {
+                    networkStatus.innerText = "Last sync: Success";
+                    networkStatus.style.color = "#4ecca3";
+                })
+                .catch(err => {
+                    networkStatus.innerText = "Sync Error: Check Console";
+                    networkStatus.style.color = "#e74c3c";
+                });
             });
         }
 
-        function handleError(error) {
-            switch(error.code) {
-                case error.PERMISSION_DENIED:
-                    statusText.innerText = "User denied the request for Geolocation.";
-                    break;
-                case error.POSITION_UNAVAILABLE:
-                    statusText.innerText = "Location information is unavailable.";
-                    break;
-                case error.TIMEOUT:
-                    statusText.innerText = "The request to get user location timed out.";
-                    break;
-                case error.UNKNOWN_ERROR:
-                    statusText.innerText = "An unknown error occurred.";
-                    break;
-            }
+        // 1. Summon Drone (Single trigger)
+        function summonDrone() {
+            modeDisplay.innerText = "SUMMONING...";
+            sendGpsData("SUMMON");
+            setTimeout(() => { if(!followInterval) modeDisplay.innerText = "IDLE"; }, 3000);
+        }
+
+        // 2. Start Follow-Me (3 second loop)
+        function startFollowMe() {
+            if (followInterval) return; // Prevent multiple loops
+
+            modeDisplay.innerText = "FOLLOW-ME ACTIVE";
+            followBtn.disabled = true;
+            stopBtn.disabled = false;
+
+            // Send immediately once
+            sendGpsData("FOLLOW");
+
+            // Start loop
+            followInterval = setInterval(() => {
+                sendGpsData("FOLLOW_LOOP");
+            }, 3000);
+        }
+
+        // 3. Stop Follow-Me
+        function stopFollowMe() {
+            clearInterval(followInterval);
+            followInterval = null;
+            
+            modeDisplay.innerText = "IDLE";
+            followBtn.disabled = false;
+            stopBtn.disabled = true;
+            networkStatus.innerText = "Follow-Me stopped.";
         }
     </script>
 </body>
