@@ -1,80 +1,36 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>GPS Logger</title>
+from flask import Flask, request, jsonify, abort
+from flask_cors import CORS
 
-  <style>
-    body {
-      font-family: Arial;
-      text-align: center;
-      padding: 30px;
-    }
+app = Flask(__name__)
+CORS(app)  # enable CORS for all routes
 
-    button {
-      font-size: 20px;
-      padding: 15px 25px;
-    }
+@app.route("/location", methods=["POST", "OPTIONS"])
+def receive_location():
 
-    #status {
-      margin-top: 20px;
-      font-size: 16px;
-    }
-  </style>
-</head>
+    # ✅ Handle CORS preflight FIRST
+    if request.method == "OPTIONS":
+        return "", 200
 
-<body>
+    # ✅ Only POST reaches here
+    data = request.get_json(silent=True)
 
-  <h2>GPS Location Logger</h2>
-  <button onclick="sendLocation()">Send My Location</button>
-  <div id="status"></div>
+    if not data:
+        abort(400)
 
-  <script>
-    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzkHb2TtxK2PGaDLQl2S2Jjeum3x1kPm8SI-6LI1pdkl7lbCNkeyekqz-4lsx_8JRQV/exec";
+    lat = data.get("latitude")
+    lon = data.get("longitude")
 
-    function sendLocation() {
-      const status = document.getElementById("status");
+    print("📍 Received GPS location")
+    print("Latitude:", lat)
+    print("Longitude:", lon)
+    print(str(lat) + " " + str(lon))
+    print("-" * 30)
 
-      if (!navigator.geolocation) {
-        status.innerText = "Geolocation not supported.";
-        return;
-      }
+    return jsonify({"status": "ok"})
 
-      status.innerText = "Getting location...";
+@app.route("/", methods=["GET"])
+def home():
+    return "GPS Server Running"
 
-      navigator.geolocation.getCurrentPosition(
-        position => {
-          const payload = {
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-            accuracy: position.coords.accuracy,
-            device: "iPhone Browser"
-          };
-
-          fetch(SCRIPT_URL, {
-            method: "POST",
-            mode: "no-cors",
-            body: JSON.stringify({
-                latitude: position.coords.latitude,
-                longitude: position.coords.longitude,
-                accuracy: position.coords.accuracy,
-                device: "iPhone Chrome"
-            })
-            })
-            .then(() => {
-            document.getElementById("status").innerText = "Location sent successfully!";
-            })
-            .catch(err => {
-            document.getElementById("status").innerText = "Error sending location.";
-            console.error(err);
-            });
-        },
-        error => {
-          status.innerText = "Location permission denied.";
-        }
-      );
-    }
-  </script>
-
-</body>
-</html>
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000)
