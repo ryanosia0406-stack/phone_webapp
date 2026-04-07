@@ -1,36 +1,71 @@
-from flask import Flask, request, jsonify, abort
-from flask_cors import CORS
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GPS Tracker</title>
+</head>
+<body>
 
-app = Flask(__name__)
-CORS(app)  # enable CORS for all routes
+    <h2>GPS to Ngrok Server</h2>
+    <button onclick="getLocation()">Send My Location</button>
+    <p id="status"></p>
 
-@app.route("/location", methods=["POST", "OPTIONS"])
-def receive_location():
+    <script>
+        const statusText = document.getElementById('status');
+        const NGROK_URL = "https://mothiest-aecial-hollie.ngrok-free.dev/location";
 
-    # ✅ Handle CORS preflight FIRST
-    if request.method == "OPTIONS":
-        return "", 200
+        function getLocation() {
+            if (navigator.geolocation) {
+                statusText.innerText = "Locating...";
+                navigator.geolocation.getCurrentPosition(sendPosition, handleError);
+            } else {
+                statusText.innerText = "Geolocation is not supported by this browser.";
+            }
+        }
 
-    # ✅ Only POST reaches here
-    data = request.get_json(silent=True)
+        function sendPosition(position) {
+            const data = {
+                latitude: position.coords.latitude,
+                longitude: position.coords.longitude
+            };
 
-    if not data:
-        abort(400)
+            statusText.innerText = `Sending: ${data.latitude}, ${data.longitude}`;
 
-    lat = data.get("latitude")
-    lon = data.get("longitude")
+            fetch(NGROK_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
+            })
+            .then(response => response.json())
+            .then(result => {
+                console.log('Success:', result);
+                statusText.innerText = "Location sent successfully!";
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                statusText.innerText = "Error sending location. Check console.";
+            });
+        }
 
-    print("📍 Received GPS location")
-    print("Latitude:", lat)
-    print("Longitude:", lon)
-    print(str(lat) + " " + str(lon))
-    print("-" * 30)
-
-    return jsonify({"status": "ok"})
-
-@app.route("/", methods=["GET"])
-def home():
-    return "GPS Server Running"
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+        function handleError(error) {
+            switch(error.code) {
+                case error.PERMISSION_DENIED:
+                    statusText.innerText = "User denied the request for Geolocation.";
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    statusText.innerText = "Location information is unavailable.";
+                    break;
+                case error.TIMEOUT:
+                    statusText.innerText = "The request to get user location timed out.";
+                    break;
+                case error.UNKNOWN_ERROR:
+                    statusText.innerText = "An unknown error occurred.";
+                    break;
+            }
+        }
+    </script>
+</body>
+</html>
